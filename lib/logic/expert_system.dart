@@ -8,14 +8,12 @@ class ExpertSystem {
   final List<Country> countries;
   Map<String, double> countryScores = {};
   List<Map<String, dynamic>> userAnswers = [];
-  bool _showAdditionalQuestions = false;
 
   ExpertSystem({
     required this.questions,
     required this.additionalQuestions,
     required this.countries,
   }) {
-    // Инициализируем счетчики для всех стран
     for (var country in countries) {
       countryScores[country.name] = 0.0;
     }
@@ -28,7 +26,6 @@ class ExpertSystem {
       'timestamp': DateTime.now(),
     });
 
-    // Обновляем счетчики стран
     for (var entry in answer.countryScores.entries) {
       String countryName = entry.key;
       double score = entry.value;
@@ -37,54 +34,50 @@ class ExpertSystem {
   }
 
   List<Map<String, dynamic>> getTopCountries({int count = 3}) {
-    var sortedEntries = countryScores.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+  var sortedEntries = countryScores.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
+  
+  var topEntries = sortedEntries.take(count).toList();
+ 
+  // УЛУЧШЕННЫЙ РАСЧЕТ: максимальный возможный балл = количество вопросов
+  double maxPossibleScore = totalQuestions.toDouble();
+  
+  return topEntries.map((entry) {
+    var country = countries.firstWhere((c) => c.name == entry.key);
+    double percentage = (entry.value / maxPossibleScore * 100).clamp(0, 100);
     
-    var topEntries = sortedEntries.take(count).toList();
-    
-    return topEntries.map((entry) {
-      var country = countries.firstWhere((c) => c.name == entry.key);
-      return {
-        'country': country,
-        'score': entry.value,
-        'matchPercentage': (entry.value / (questions.length + additionalQuestions.length) * 100).clamp(0, 100),
-      };
-    }).toList();
-  }
+    return {
+      'country': country,
+      'score': entry.value,
+      'matchPercentage': percentage,
+      'maxPossibleScore': maxPossibleScore,
+    };
+  }).toList();
+}
 
   void reset() {
     countryScores.clear();
     userAnswers.clear();
-    _showAdditionalQuestions = false;
     for (var country in countries) {
       countryScores[country.name] = 0.0;
     }
   }
 
-  bool get isMainComplete => userAnswers.length >= questions.length;
-  bool get isAdditionalComplete => _showAdditionalQuestions && 
-      userAnswers.length >= questions.length + additionalQuestions.length;
-  bool get isComplete => isMainComplete && (!_showAdditionalQuestions || isAdditionalComplete);
-
-  void showAdditionalQuestions() {
-    _showAdditionalQuestions = true;
-  }
+  bool get isComplete => userAnswers.length >= totalQuestions;
 
   int get currentQuestionIndex => userAnswers.length;
   
   Question? get currentQuestion {
-    if (userAnswers.length < questions.length) {
-      return questions[userAnswers.length];
-    } else if (_showAdditionalQuestions && 
-               userAnswers.length < questions.length + additionalQuestions.length) {
-      return additionalQuestions[userAnswers.length - questions.length];
+    if (userAnswers.length < totalQuestions) {
+      if (userAnswers.length < questions.length) {
+        return questions[userAnswers.length];
+      } else {
+        int additionalIndex = userAnswers.length - questions.length;
+        return additionalQuestions[additionalIndex];
+      }
     }
     return null;
   }
 
-  int get totalQuestions => questions.length + 
-      (_showAdditionalQuestions ? additionalQuestions.length : 0);
-  
-  bool get shouldShowAdditionalQuestions => 
-      isMainComplete && !_showAdditionalQuestions && !isAdditionalComplete;
+  int get totalQuestions => questions.length + additionalQuestions.length;
 }

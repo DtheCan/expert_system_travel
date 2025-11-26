@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'data/expert_system_data.dart';
 import 'logic/expert_system.dart';
 import 'models/country.dart';
+import 'models/answer.dart';
 
 class VacationExpertApp extends StatefulWidget {
   const VacationExpertApp({super.key});
@@ -18,7 +19,7 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
   void initState() {
     super.initState();
     expertSystem = ExpertSystem(
-      questions: ExpertSystemData.getQuestions(), // ИЗМЕНИТЕ ЗДЕСЬ
+      questions: ExpertSystemData.getQuestions(),
       additionalQuestions: ExpertSystemData.getAdditionalQuestions(),
       countries: ExpertSystemData.countries,
     );
@@ -29,6 +30,64 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
       expertSystem.reset();
       results.clear();
     });
+  }
+
+  Widget _buildUserAnswersAnalysis() {
+    final userAnswers = expertSystem.userAnswers;
+    final totalQuestions = expertSystem.totalQuestions;
+
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Анализ ваших ответов',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 15),
+            _buildAnalysisRow('Всего вопросов', '$totalQuestions'),
+            _buildAnalysisRow('Отвечено вопросов', '${userAnswers.length}'),
+            _buildAnalysisRow('Тип отдыха', _getUserPreference('q1')),
+            _buildAnalysisRow(
+              'Предпочитаемый климат',
+              _getUserPreference('q2'),
+            ),
+            _buildAnalysisRow('Бюджет поездки', _getUserPreference('q3')),
+            if (userAnswers.length > 5) ...[
+              _buildAnalysisRow('Тип питания', _getUserPreference('q6')),
+              _buildAnalysisRow('Размещение', _getUserPreference('q7')),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnalysisRow(String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+          Text(value, style: const TextStyle(color: Colors.blue)),
+        ],
+      ),
+    );
+  }
+
+  String _getUserPreference(String questionId) {
+    final answer = expertSystem.userAnswers.firstWhere(
+      (ua) => ua['questionId'] == questionId,
+      orElse: () => {},
+    );
+    if (answer.isNotEmpty) {
+      return (answer['answer'] as Answer).text;
+    }
+    return 'Не указано';
   }
 
   @override
@@ -62,65 +121,11 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
       return _buildDetailedResultsScreen();
     } else if (expertSystem.isComplete) {
       return _buildFinalScreen();
-    } else if (expertSystem.shouldShowAdditionalQuestions) {
-      return _buildAdditionalQuestionsPrompt();
+    } else if (expertSystem.currentQuestion != null) {
+      return _buildQuestionScreen(); // Все вопросы идут подряд
     } else {
-      return _buildQuestionScreen();
+      return _buildErrorScreen();
     }
-  }
-
-  Widget _buildAdditionalQuestionsPrompt() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.psychology, size: 80, color: Colors.blue),
-          const SizedBox(height: 20),
-          const Text(
-            'Хотите уточнить рекомендацию?',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 15),
-          const Text(
-            'Ответьте на 2 дополнительных вопроса для более точного подбора страны',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 30),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      expertSystem.showAdditionalQuestions();
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    backgroundColor: Colors.blue,
-                  ),
-                  child: const Text('Да, продолжить'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    setState(() {
-                      // Пропускаем дополнительные вопросы
-                    });
-                  },
-                  child: const Text('Показать результат'),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildQuestionScreen() {
@@ -132,7 +137,7 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Прогресс бар
+          // Прогресс бар - уже корректно работает
           LinearProgressIndicator(
             value:
                 expertSystem.currentQuestionIndex / expertSystem.totalQuestions,
@@ -141,9 +146,9 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
           ),
           const SizedBox(height: 20),
 
-          // Текст вопроса
+          // Текст вопроса - ОБНОВИТЬ для отображения типа вопросов
           Text(
-            'Вопрос ${expertSystem.currentQuestionIndex + 1} из ${expertSystem.totalQuestions}',
+            _getQuestionTypeText(), // ← НОВЫЙ МЕТОД
             style: TextStyle(fontSize: 16, color: Colors.grey[600]),
           ),
           const SizedBox(height: 10),
@@ -152,9 +157,8 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
             question.text,
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
-          const SizedBox(height: 30),
-
-          // Варианты ответов
+          const SizedBox(height: 30), // ← ДОБАВИТЬ этот отступ
+          // ДОБАВИТЬ ЭТУ ЧАСТЬ - варианты ответов
           Expanded(
             child: ListView.builder(
               itemCount: question.answers.length,
@@ -184,8 +188,17 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
     );
   }
 
+  String _getQuestionTypeText() {
+    final currentIndex = expertSystem.currentQuestionIndex;
+    final totalQuestions = expertSystem.totalQuestions;
+
+    return 'Вопрос ${currentIndex + 1} из $totalQuestions';
+  }
+
   Widget _buildFinalScreen() {
     final topCountries = expertSystem.getTopCountries(count: 3);
+    final totalQuestions = expertSystem.totalQuestions;
+    final answeredQuestions = expertSystem.userAnswers.length;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -195,13 +208,14 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
           const Icon(Icons.celebration, size: 80, color: Colors.blue),
           const SizedBox(height: 20),
           const Text(
-            'Рекомендация готов!',
+            'Рекомендация готова!',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 10),
-          const Text(
-            'На основе ваших ответов мы подобрали лучшие варианты:',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+
+          Text(
+            'На основе ваших ответов на $answeredQuestions из $totalQuestions вопросов:',
+            style: const TextStyle(fontSize: 16, color: Colors.grey),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 30),
@@ -213,16 +227,21 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
                 final result = topCountries[index];
                 final country = result['country'] as Country;
                 final percentage = result['matchPercentage'] as double;
+                final score = result['score'] as double;
+                final maxScore = result['maxPossibleScore'] as double;
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 16),
                   elevation: 4,
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: Colors.blue[100],
+                      backgroundColor: _getColorByPercentage(percentage),
                       child: Text(
-                        '${(percentage).toInt()}%',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        '${percentage.toInt()}%',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                     title: Text(
@@ -232,11 +251,32 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    subtitle: Text(country.description),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(country.description),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Совпадение: ${score.toStringAsFixed(1)}/${maxScore.toStringAsFixed(1)} баллов',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
                     trailing: const Icon(Icons.arrow_forward_ios),
                     onTap: () {
                       setState(() {
-                        results = [result];
+                        // СОХРАНЯЕМ ВСЕ ДАННЫЕ ДЛЯ ДЕТАЛЬНОГО ПРОСМОТРА
+                        results = [
+                          {
+                            'country': country,
+                            'matchPercentage': percentage,
+                            'score': score,
+                            'maxPossibleScore': maxScore,
+                          },
+                        ];
                       });
                     },
                   ),
@@ -261,10 +301,17 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
 
   // ДОБАВЛЯЕМ РАСШИРЕННЫЙ ЭКРАН РЕЗУЛЬТАТОВ
   Widget _buildDetailedResultsScreen() {
-    final topCountries = expertSystem.getTopCountries(count: 5);
-    final topCountry = topCountries.first;
-    final country = topCountry['country'] as Country;
-    final percentage = topCountry['matchPercentage'] as double;
+    // ИСПОЛЬЗУЕМ ПЕРВЫЙ ЭЛЕМЕНТ ИЗ RESULTS, А НЕ TOPCOUNTRIES
+    final result = results.first;
+    final country = result['country'] as Country;
+    final percentage = result['matchPercentage'] as double;
+    final score = result['score'] as double;
+    final maxScore = result['maxPossibleScore'] as double;
+    final totalQuestions = expertSystem.totalQuestions;
+    final answeredQuestions = expertSystem.userAnswers.length;
+
+    // ПОЛУЧАЕМ ВСЕ СТРАНЫ ДЛЯ АЛЬТЕРНАТИВНЫХ ВАРИАНТОВ
+    final allCountries = expertSystem.getTopCountries(count: 5);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -278,13 +325,25 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
                 CircleAvatar(
                   radius: 60,
                   backgroundColor: _getColorByPercentage(percentage),
-                  child: Text(
-                    '${percentage.toInt()}%',
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '${percentage.toInt()}%',
+                        style: const TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        '${score.toStringAsFixed(1)}/$maxScore',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -297,6 +356,11 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
                 ),
                 const SizedBox(height: 10),
                 Text(
+                  'На основе $answeredQuestions из $totalQuestions вопросов',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 5),
+                Text(
                   'Идеальное совпадение с вашими предпочтениями!',
                   style: TextStyle(fontSize: 16, color: Colors.green[700]),
                 ),
@@ -306,20 +370,20 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
 
           const SizedBox(height: 30),
 
+          // Анализ ответов
+          _buildUserAnswersAnalysis(),
+          const SizedBox(height: 20),
+
           // Детальная информация о стране
           _buildCountryDetailSection(country),
           const SizedBox(height: 20),
 
-          // Анализ по критериям
-          _buildCriteriaAnalysis(),
-          const SizedBox(height: 20),
-
-          // Альтернативные варианты
-          _buildAlternativeOptions(topCountries),
-          const SizedBox(height: 20),
-
           // Рекомендации
           _buildRecommendations(country),
+          const SizedBox(height: 20),
+
+          // Альтернативные варианты (ПЕРЕДАЕМ ALLCOUNTRIES)
+          _buildAlternativeOptions(allCountries),
           const SizedBox(height: 30),
 
           // Кнопки действий
@@ -354,7 +418,17 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
               'Разница во времени',
               _getTimeDifference(country.name),
             ),
-            _buildDetailRow('✈️', 'Перелет', _getFlightInfo(country.name)),
+            _buildDetailRow('✈️', 'Перелет', '${country.flightTime} часов'),
+            _buildDetailRow(
+              '📝',
+              'Виза',
+              country.visaRequired ? 'Требуется' : 'Не требуется',
+            ),
+            _buildDetailRow(
+              '⭐',
+              'Популярность',
+              '${(country.popularity * 100).toInt()}%',
+            ),
           ],
         ),
       ),
@@ -378,62 +452,6 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
           Expanded(
             flex: 3,
             child: Text(value, style: const TextStyle(color: Colors.blue)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCriteriaAnalysis() {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Анализ ваших предпочтений',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 15),
-            _buildCriteriaRow('Тип отдыха', 'Пляжный', 85),
-            _buildCriteriaRow('Климат', 'Жаркий', 90),
-            _buildCriteriaRow('Бюджет', 'Средний', 75),
-            _buildCriteriaRow('Активности', 'Экскурсии', 80),
-            _buildCriteriaRow('Питание', 'Все включено', 70),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCriteriaRow(String criterion, String preference, int match) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('$criterion: $preference'),
-              Text(
-                '$match%',
-                style: TextStyle(
-                  color: _getColorByPercentage(match.toDouble()),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(
-            value: match / 100,
-            backgroundColor: Colors.grey[200],
-            valueColor: AlwaysStoppedAnimation<Color>(
-              _getColorByPercentage(match.toDouble()),
-            ),
           ),
         ],
       ),
@@ -469,7 +487,15 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
                 trailing: const Icon(Icons.arrow_forward),
                 onTap: () {
                   setState(() {
-                    results = [result];
+                    // ДОБАВЛЯЕМ ВСЕ ДАННЫЕ О ВЫБРАННОЙ СТРАНЕ
+                    results = [
+                      {
+                        'country': country,
+                        'matchPercentage': percentage,
+                        'score': result['score'],
+                        'maxPossibleScore': result['maxPossibleScore'],
+                      },
+                    ];
                   });
                 },
               );
@@ -548,29 +574,17 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
   Widget _buildActionButtons() {
     return Row(
       children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: () {
-              // Действие для поиска туров
-            },
-            icon: const Icon(Icons.search),
-            label: const Text('Найти туры'),
-            style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 15),
-              backgroundColor: Colors.green,
-            ),
-          ),
-        ),
         const SizedBox(width: 10),
         Expanded(
           child: OutlinedButton.icon(
             onPressed: () {
               setState(() {
+                // ВОЗВРАЩАЕМСЯ К ОСНОВНЫМ РЕЗУЛЬТАТАМ
                 results.clear();
               });
             },
             icon: const Icon(Icons.refresh),
-            label: const Text('Новый подбор'),
+            label: const Text('Вернуться к результатам'),
           ),
         ),
       ],
@@ -606,18 +620,6 @@ class _VacationExpertAppState extends State<VacationExpertApp> {
       'Япония': '+6 часов',
     };
     return differences[country] ?? '0 часов';
-  }
-
-  String _getFlightInfo(String country) {
-    final flights = {
-      'Египет': '4-5 часов',
-      'Испания': '5-6 часов',
-      'Франция': '4 часа',
-      'Италия': '4 часа',
-      'Швейцария': '4 часа',
-      'Япония': '10-12 часов',
-    };
-    return flights[country] ?? '3-4 часа';
   }
 
   String _getHotelsRecommendation(String country) {
